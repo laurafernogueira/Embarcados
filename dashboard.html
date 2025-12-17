@@ -28,8 +28,9 @@
         </div>
     </div>
 
-    <script>
-        const API_URL = "https://embarcados-1.onrender.com/api/dados-recentes"; // TROQUE PELO SEU LINK
+  <script>
+        // Use o seu link do Render aqui
+        const API_URL = "https://embarcados-1.onrender.com/api/dados-recentes"; 
 
         async function atualizarDashboard() {
             try {
@@ -37,24 +38,39 @@
                 const data = await response.json();
                 
                 if (data.total > 0) {
+                    // Pegamos o dado mais recente (primeiro da lista)
                     const ultimo = data.dados[0];
-                    const estiloClasse = ultimo.classificacao.classificacao === 'arriscado' ? 'status-arriscado' : 'status-seguro';
                     
+                    // Define a cor baseada na classificação do Machine Learning
+                    const estiloClasse = ultimo.classificacao.classificacao_ml === 'arriscado' ? 'status-arriscado' : 'status-seguro';
+                    
+                    // Atualiza os textos no HTML
                     document.getElementById('dados-atuais').innerHTML = `
-                        <p><strong>Veículo:</strong> ${ultimo.veiculo_id}</p>
+                        <p><strong>Veículo ID:</strong> ${ultimo.veiculo_id}</p>
                         <p><strong>Motorista:</strong> ${ultimo.motorista_id}</p>
+                        <hr>
                         <p><strong>Velocidade:</strong> ${ultimo.dados.velocidade} km/h</p>
-                        <p><strong>Status ML:</strong> <span class="${estiloClasse}">${ultimo.classificacao.classificacao.toUpperCase()}</span></p>
-                        <p><small>Atualizado em: ${new Date(ultimo.timestamp).toLocaleString()}</small></p>
+                        <p><strong>Aceleração:</strong> ${ultimo.dados.aceleracao_ms2} m/s²</p>
+                        <p><strong>RPM:</strong> ${ultimo.dados.rpm}</p>
+                        <p><strong>Pedal Acelerador:</strong> ${ultimo.dados.pedal_acelerador_pct}%</p>
+                        <hr>
+                        <p><strong>Análise ML:</strong> <span class="${estiloClasse}">${ultimo.classificacao.classificacao_ml.toUpperCase()}</span></p>
+                        <p><strong>Confiança:</strong> ${(ultimo.classificacao.confianca * 100).toFixed(1)}%</p>
+                        <p><small>Última atualização: ${new Date(ultimo.timestamp).toLocaleString()}</small></p>
                     `;
+                } else {
+                    document.getElementById('dados-atuais').innerHTML = "Aguardando dados do veículo...";
                 }
             } catch (error) {
                 console.error("Erro ao buscar dados:", error);
+                document.getElementById('dados-atuais').innerHTML = "Erro ao conectar com o servidor.";
             }
         }
 
-        // Atualiza a cada 5 segundos
-        setInterval(atualizarDashboard, 5000);
+        // Faz o dashboard atualizar sozinho a cada 3 segundos
+        setInterval(atualizarDashboard, 3000);
+        
+        // Carrega uma vez assim que abre a página
         atualizarDashboard();
     </script>
 </body>
