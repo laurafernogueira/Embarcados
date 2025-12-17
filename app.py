@@ -1,6 +1,3 @@
-@app.route('/')
-def index():
-    return send_from_directory('.', 'dashboard.html')
 import os
 import json
 import random
@@ -14,23 +11,23 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# Variáveis globais para monitoramento no Dashboard
+# Variáveis globais para o status do sistema
 mqtt_conectado = False
 mensagens_recebidas = 0
 
 # 2. Configuração do Firebase
 try:
     if not firebase_admin._apps:
-        # O arquivo firebase-credentials.json deve estar na raiz do seu GitHub
+        # Certifique-se de que o arquivo firebase-credentials.json está na raiz do GitHub
         cred = credentials.Certificate("firebase-credentials.json")
         firebase_admin.initialize_app(cred)
     db = firestore.client()
     firebase_disponivel = True
 except Exception as e:
-    print(f"Erro ao conectar no Firebase: {e}")
+    print(f"Erro Firebase: {e}")
     firebase_disponivel = False
 
-# 3. Configuração do MQTT
+# 3. Configuração do MQTT (Broker Público)
 BROKER = "broker.hivemq.com"
 PORT = 1883
 TOPICO = "telemetria/#"
@@ -40,44 +37,44 @@ def on_connect(client, userdata, flags, rc, properties=None):
     if rc == 0:
         mqtt_conectado = True
         client.subscribe(TOPICO)
-        print("✅ Backend conectado ao Broker MQTT e inscrito no tópico.")
+        print("✅ MQTT Conectado com sucesso!")
     else:
-        print(f"❌ Falha na conexão MQTT. Código: {rc}")
         mqtt_conectado = False
+        print(f"❌ Falha MQTT código: {rc}")
 
 def on_message(client, userdata, msg):
     global mensagens_recebidas
     try:
         payload = json.loads(msg.payload.decode())
-        # Salva o dado no Firestore dentro da coleção 'telemetria'
+        # Salva no Firestore
         db.collection("telemetria").add(payload)
         mensagens_recebidas += 1
-        print(f"📥 Dado recebido e salvo: {payload.get('veiculo_id')}")
+        print(f"📥 Dados recebidos do veículo: {payload.get('veiculo_id')}")
     except Exception as e:
-        print(f"Erro ao processar mensagem MQTT: {e}")
+        print(f"Erro ao processar mensagem: {e}")
 
-# Criar cliente MQTT com ID aleatório para evitar conflitos no Render
+# Cliente MQTT com ID único para o Render
 client_id = f'render-backend-{random.randint(1000, 9999)}'
 mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
 
-# Inicia o loop MQTT em uma thread separada para não travar o Flask
+# Conexão não-bloqueante para evitar erro 502
 try:
     mqtt_client.connect(BROKER, PORT, 60)
     mqtt_client.loop_start()
 except Exception as e:
-    print(f"⚠️ Erro ao iniciar MQTT: {e}. O site continuará rodando.")
+    print(f"⚠️ MQTT indisponível no momento: {e}")
 
-# 4. Rotas do Servidor
+# --- ROTAS DO SERVIDOR ---
+
 @app.route('/')
 def index():
-    """Serve a página principal do Dashboard"""
+    # Serve o seu arquivo dashboard.html
     return send_from_directory('.', 'dashboard.html')
 
 @app.route('/api/status')
 def status():
-    """Rota para verificar se o motor do sistema está ok"""
     return jsonify({
         "status": "online",
         "mqtt_conectado": mqtt_conectado,
@@ -87,19 +84,16 @@ def status():
 
 @app.route('/api/dados-recentes')
 def dados_recentes():
-    """Busca os últimos 10 registros do Firebase para o gráfico"""
     try:
-        if not firebase_disponivel:
-            return jsonify({"erro": "Firebase indisponível"}), 500
-            
-        docs = db.collection("telemetria").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(10).stream()
-        lista_dados = [doc.to_dict() for doc in docs]
-        return jsonify({"total": len(lista_dados), "dados": lista_dados})
+        # Busca os últimos 15 registros para o gráfico
+        docs = db.collection("telemetria").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(15).stream()
+        lista = [doc.to_dict() for doc in docs]
+        return jsonify({"total": len(lista), "dados": lista})
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
 
-# 5. Inicialização do Servidor (Configuração de Porta para o Render)
+# 4. Inicialização do Servidor
 if __name__ == "__main__":
-    # O Render fornece a porta dinamicamente via variável de ambiente PORT
+    # O Render exige o uso da variável de ambiente PORT
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
