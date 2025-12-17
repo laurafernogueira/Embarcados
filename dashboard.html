@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Painel da Seguradora - Telemetria IoT</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .status-seguro { color: green; font-weight: bold; }
+        .status-arriscado { color: red; font-weight: bold; }
+        h1 { color: #2c3e50; }
+    </style>
+</head>
+<body>
+    <h1>📊 Monitoramento em Tempo Real - Seguradora</h1>
+    
+    <div class="grid">
+        <div class="card">
+            <h2>Último Evento</h2>
+            <div id="dados-atuais">Carregando...</div>
+        </div>
+
+        <div class="card">
+            <h2>Histórico de Velocidade</h2>
+            <canvas id="graficoVelocidade"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://embarcados-1.onrender.com/api/dados-recentes"; // TROQUE PELO SEU LINK
+
+        async function atualizarDashboard() {
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                
+                if (data.total > 0) {
+                    const ultimo = data.dados[0];
+                    const estiloClasse = ultimo.classificacao.classificacao === 'arriscado' ? 'status-arriscado' : 'status-seguro';
+                    
+                    document.getElementById('dados-atuais').innerHTML = `
+                        <p><strong>Veículo:</strong> ${ultimo.veiculo_id}</p>
+                        <p><strong>Motorista:</strong> ${ultimo.motorista_id}</p>
+                        <p><strong>Velocidade:</strong> ${ultimo.dados.velocidade} km/h</p>
+                        <p><strong>Status ML:</strong> <span class="${estiloClasse}">${ultimo.classificacao.classificacao.toUpperCase()}</span></p>
+                        <p><small>Atualizado em: ${new Date(ultimo.timestamp).toLocaleString()}</small></p>
+                    `;
+                }
+            } catch (error) {
+                console.error("Erro ao buscar dados:", error);
+            }
+        }
+
+        // Atualiza a cada 5 segundos
+        setInterval(atualizarDashboard, 5000);
+        atualizarDashboard();
+    </script>
+</body>
+</html>
