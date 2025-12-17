@@ -1,3 +1,6 @@
+@app.route('/')
+def index():
+    return send_from_directory('.', 'dashboard.html')
 import os
 import json
 import paho.mqtt.client as mqtt
