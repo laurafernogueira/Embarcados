@@ -4,6 +4,15 @@ Recebe dados via MQTT → Salva no Firebase → Serve API para Seguradoras
 
 Deploy: Heroku, AWS EC2, DigitalOcean, Google Cloud Run
 """
+from flask import Flask, jsonify, send_from_directory # Adicione send_from_directory
+import os
+
+app = Flask(__name__)
+
+# Adicione esta rota logo após criar o 'app'
+@app.route('/')
+def index():
+    return send_from_directory('.', 'dashboard.html')
 
 import paho.mqtt.client as mqtt
 import json
