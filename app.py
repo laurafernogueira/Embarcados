@@ -16,13 +16,20 @@ CORS(app)
 mqtt_conectado = False
 mensagens_recebidas = 0
 
-# 2. Configuração do Firebase
+# 2. Configuração do Firebase (AJUSTADO PARA RENDER)
 try:
     if not firebase_admin._apps:
-        cred = credentials.Certificate("firebase-credentials.json")
+        # Tenta ler do caminho de Secret Files do Render, se não existir, usa o local
+        cred_path = '/etc/secrets/firebase-credentials.json'
+        if not os.path.exists(cred_path):
+            cred_path = 'firebase-credentials.json'
+            
+        cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
+    
     db = firestore.client()
     firebase_disponivel = True
+    print("✅ Conectado ao Firebase com sucesso!")
 except Exception as e:
     print(f"❌ Erro Firebase: {e}")
     firebase_disponivel = False
@@ -90,9 +97,9 @@ def status():
 def dados_recentes():
     try:
         if not firebase_disponivel:
-            return jsonify({"erro": "Firebase indisponível"}), 500
+            return jsonify({"erro": "Firebase indisponível", "dados": []}), 500
             
-        # OTIMIZAÇÃO: Usando .get() e limitando a 10 para evitar Erro 502/Timeout
+        # Busca apenas os 10 mais recentes para não travar a memória do Render
         docs = db.collection("telemetria")\
                  .order_by("timestamp", direction=firestore.Query.DESCENDING)\
                  .limit(10)\
@@ -101,14 +108,14 @@ def dados_recentes():
         lista = []
         for doc in docs:
             d = doc.to_dict()
-            # Validação para não enviar dados incompletos ao Dashboard
-            if 'motorista_id' in d and 'classificacao' in d:
+            # Filtro para garantir que os dados essenciais para o gráfico existam
+            if 'motorista_id' in d and 'dados' in d:
                 lista.append(d)
                 
         return jsonify({"total": len(lista), "dados": lista})
     except Exception as e:
         print(f"❌ Erro na consulta Firestore: {e}")
-        return jsonify({"erro": str(e)}), 500
+        return jsonify({"erro": str(e), "dados": []}), 500
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
