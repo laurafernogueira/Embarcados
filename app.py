@@ -11,16 +11,16 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
-# --- CONFIGURAÇÃO DO FIREBASE (Ajustado para Secret Files do Render) ---
+# --- CONFIGURAÇÃO DO FIREBASE (Suporte a Secret Files do Render) ---
 firebase_disponivel = False
 db = None
 
 try:
     if not firebase_admin._apps:
-        # Tenta o caminho padrão de Secret Files do Render primeiro
+        # Caminho oficial para segredos no Render
         cred_path = '/etc/secrets/firebase-credentials.json'
         
-        # Se não existir (teste local), tenta o arquivo na raiz
+        # Fallback para desenvolvimento local
         if not os.path.exists(cred_path):
             cred_path = 'firebase-credentials.json'
             
@@ -29,11 +29,11 @@ try:
             firebase_admin.initialize_app(cred)
             db = firestore.client()
             firebase_disponivel = True
-            print(f"✅ Firebase conectado via: {cred_path}")
+            print(f"✅ Conexão estabelecida: {cred_path}")
         else:
-            print("❌ Arquivo de credenciais não encontrado.")
+            print("⚠️ Aviso: Credenciais não encontradas. Verifique os Secret Files.")
 except Exception as e:
-    print(f"❌ Erro crítico no Firebase: {e}")
+    print(f"❌ Erro Crítico Firebase: {e}")
 
 # --- CONFIGURAÇÃO DO MQTT ---
 BROKER = "broker.hivemq.com"
@@ -43,11 +43,12 @@ def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
         if firebase_disponivel:
-            # Salva no Firestore
+            # Salva no Firestore com timestamp de servidor caso falte no payload
+            if 'timestamp' not in payload:
+                payload['timestamp'] = datetime.utcnow().isoformat()
             db.collection("telemetria").add(payload)
-            print(f"📥 Recebido e Salvo: {payload.get('motorista_id')}")
     except Exception as e:
-        print(f"❌ Erro MQTT: {e}")
+        print(f"❌ Erro ao processar MQTT: {e}")
 
 mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 mqtt_client.on_message = on_message
@@ -55,7 +56,7 @@ mqtt_client.connect(BROKER, 1883, 60)
 mqtt_client.subscribe(TOPICO)
 mqtt_client.loop_start()
 
-# --- ROTAS DA API ---
+# --- ROTAS ---
 
 @app.route('/')
 def index():
@@ -65,20 +66,14 @@ def index():
 def dados_recentes():
     try:
         if not firebase_disponivel:
-            return jsonify({"erro": "Firebase off", "dados": []}), 500
+            return jsonify({"dados": []}), 500
             
-        # Busca os 10 mais recentes para evitar timeout no Render
+        # Busca limitada para manter a performance estável
         docs = db.collection("telemetria")\
                  .order_by("timestamp", direction=firestore.Query.DESCENDING)\
                  .limit(10).get()
         
-        lista = []
-        for doc in docs:
-            d = doc.to_dict()
-            # Valida se os campos que o Dashboard precisa existem no documento
-            if 'dados' in d and 'classificacao' in d:
-                lista.append(d)
-                
+        lista = [doc.to_dict() for doc in docs if 'dados' in doc.to_dict()]
         return jsonify({"dados": lista})
     except Exception as e:
         return jsonify({"erro": str(e), "dados": []}), 500
