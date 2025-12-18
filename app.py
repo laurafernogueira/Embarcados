@@ -12,42 +12,37 @@ CORS(app)
 firebase_disponivel = False
 db = None
 
-# TENTATIVA DE CONEXÃO MULTI-CAMINHO
+# --- CONEXÃO FIREBASE (CAMINHO ABSOLUTO RENDER) ---
 try:
     if not firebase_admin._apps:
-        # Lista de locais onde o Render pode ter escondido seu arquivo
-        paths = [
-            '/etc/secrets/firebase-credentials.json',
-            os.path.join(os.getcwd(), 'firebase-credentials.json'),
-            'firebase-credentials.json',
-            '../firebase-credentials.json'
-        ]
+        # No Render, Secret Files são montados obrigatoriamente em /etc/secrets/
+        cert_path = '/etc/secrets/firebase-credentials.json'
         
-        cred = None
-        for p in paths:
-            if os.path.exists(p):
-                print(f"🔎 Arquivo encontrado em: {p}")
-                cred = credentials.Certificate(p)
-                break
-        
-        if cred:
+        # Se não encontrar no caminho do Render, tenta no diretório local (fallback)
+        if not os.path.exists(cert_path):
+            cert_path = os.path.join(os.getcwd(), 'firebase-credentials.json')
+
+        if os.path.exists(cert_path):
+            cred = credentials.Certificate(cert_path)
             firebase_admin.initialize_app(cred)
             db = firestore.client()
             firebase_disponivel = True
-            print("✅ FIREBASE CONECTADO COM SUCESSO!")
+            print(f"✅ Firebase conectado com sucesso usando: {cert_path}")
         else:
-            print("❌ NENHUM ARQUIVO DE CHAVE ENCONTRADO NO SERVIDOR!")
+            print(f"❌ Erro: Arquivo não encontrado em {cert_path}")
 except Exception as e:
-    print(f"💥 Erro ao carregar Firebase: {e}")
+    print(f"💥 Falha ao carregar credenciais: {e}")
 
 # --- CONFIGURAÇÃO MQTT ---
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
         if firebase_disponivel:
+            # O Firestore organiza por data se você usar o timestamp enviado pela Raspberry
             db.collection("telemetria").add(payload)
-            print("📥 Dado salvo no banco!")
-    except: pass
+            print("📥 Dado da Raspberry salvo no Firebase!")
+    except Exception as e:
+        print(f"⚠️ Erro no processamento MQTT: {e}")
 
 mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 mqtt_client.on_message = on_message
@@ -56,16 +51,18 @@ mqtt_client.subscribe("telemetria/+/dados")
 mqtt_client.loop_start()
 
 @app.route('/')
-def index(): return send_from_directory('.', 'dashboard.html')
+def index():
+    return send_from_directory('.', 'dashboard.html')
 
 @app.route('/api/dados-recentes')
 def dados_recentes():
     if not firebase_disponivel:
-        return jsonify({"erro": "Firebase ainda offline no servidor", "dados": []}), 500
+        return jsonify({"erro": "Firebase indisponivel no servidor Render", "dados": []}), 500
     try:
+        # Busca os 15 mais recentes
         docs = db.collection("telemetria").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(15).get()
         lista = [doc.to_dict() for doc in docs]
-        return jsonify({"dados": lista})
+        return jsonify({"dados": lista, "total": len(lista)})
     except Exception as e:
         return jsonify({"erro": str(e), "dados": []}), 500
 
