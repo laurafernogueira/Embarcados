@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Painel da Seguradora - IoT</title>
+    <title>Painel da Seguradora - IoT Telemetria</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
@@ -10,8 +10,10 @@
         .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         h1 { text-align: center; color: #1a73e8; }
         .status-seguro { color: #27ae60; background: #eafaf1; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
+        .status-moderado { color: #f39c12; background: #fff5e6; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
         .status-arriscado { color: #c0392b; background: #fdeaea; padding: 5px 10px; border-radius: 5px; font-weight: bold; }
         hr { border: 0; border-top: 1px solid #eee; margin: 15px 0; }
+        small { color: #888; }
     </style>
 </head>
 <body>
@@ -19,7 +21,7 @@
     
     <div class="grid">
         <div class="card">
-            <h2>🚨 Último Alerta</h2>
+            <h2>🚨 Último Alerta de IA</h2>
             <div id="dados-atuais">Aguardando dados do Raspberry Pi...</div>
         </div>
 
@@ -30,7 +32,8 @@
     </div>
 
     <script>
-        const API_URL = "/api/dados-recentes"; // Usa rota relativa
+        // Configura a URL da API dinamicamente
+        const API_URL = window.location.origin + "/api/dados-recentes"; 
         let grafico;
 
         function inicializarGrafico() {
@@ -45,8 +48,15 @@
                         borderColor: '#1a73e8',
                         backgroundColor: 'rgba(26, 115, 232, 0.1)',
                         fill: true,
-                        tension: 0.3
+                        tension: 0.4,
+                        pointRadius: 4
                     }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, max: 180 }
+                    }
                 }
             });
         }
@@ -57,32 +67,47 @@
                 const json = await response.json();
                 
                 if (json.dados && json.dados.length > 0) {
-                    const dadosInvertidos = json.dados.reverse();
-                    const ultimo = dadosInvertidos[dadosInvertidos.length - 1];
+                    // O backend envia do mais novo para o mais antigo. 
+                    // Para o gráfico, precisamos do contrário (antigo -> novo).
+                    const dadosParaExibir = [...json.dados].reverse();
+                    const ultimo = json.dados[0]; // O primeiro do array original é o mais recente
                     
-                    // Atualiza Texto
-                    const classe = ultimo.classificacao.classificacao_ml === 'arriscado' ? 'status-arriscado' : 'status-seguro';
+                    // 1. ATUALIZAR CARD DE TEXTO
+                    let classeStatus = 'status-moderado';
+                    let labelStatus = 'NÃO IDENTIFICADO';
+
+                    if (ultimo.classificacao) {
+                        const statusML = ultimo.classificacao.classificacao_ml.toLowerCase();
+                        labelStatus = statusML.toUpperCase();
+                        if (statusML === 'arriscado') classeStatus = 'status-arriscado';
+                        else if (statusML === 'seguro') classeStatus = 'status-seguro';
+                    }
+
                     document.getElementById('dados-atuais').innerHTML = `
-                        <p><strong>Veículo:</strong> ${ultimo.veiculo_id}</p>
-                        <p><strong>Motorista:</strong> ${ultimo.motorista_id}</p>
+                        <p><strong>Veículo:</strong> ${ultimo.veiculo_id || '---'}</p>
+                        <p><strong>Motorista:</strong> ${ultimo.motorista_id || 'Simulação'}</p>
                         <hr>
-                        <p><strong>Velocidade:</strong> ${ultimo.dados.velocidade} km/h</p>
-                        <p><strong>Comportamento:</strong> <span class="${classe}">${ultimo.classificacao.classificacao_ml.toUpperCase()}</span></p>
-                        <p><small>Sincronizado às: ${new Date(ultimo.timestamp).toLocaleTimeString()}</small></p>
+                        <p><strong>Velocidade Atual:</strong> ${ultimo.dados.velocidade} km/h</p>
+                        <p><strong>RPM:</strong> ${ultimo.dados.rpm}</p>
+                        <p><strong>Comportamento:</strong> <span class="${classeStatus}">${labelStatus}</span></p>
+                        <p><small>Sincronizado em: ${new Date(ultimo.timestamp).toLocaleTimeString()}</small></p>
                     `;
 
-                    // Atualiza Gráfico
-                    grafico.data.labels = dadosInvertidos.slice(-10).map(d => new Date(d.timestamp).toLocaleTimeString());
-                    grafico.data.datasets[0].data = dadosInvertidos.slice(-10).map(d => d.dados.velocidade);
-                    grafico.update();
+                    // 2. ATUALIZAR GRÁFICO (Mostrar últimos 15 pontos)
+                    grafico.data.labels = dadosParaExibir.map(d => new Date(d.timestamp).toLocaleTimeString());
+                    grafico.data.datasets[0].data = dadosParaExibir.map(d => d.dados.velocidade);
+                    grafico.update('none'); // Update suave sem resetar animação
                 }
-            } catch (e) { console.error("Erro na atualização:", e); }
+            } catch (e) { 
+                console.error("Erro na atualização do Dashboard:", e); 
+            }
         }
 
         window.onload = () => {
             inicializarGrafico();
             atualizar();
-            setInterval(atualizar, 3000);
+            // Atualiza a cada 3 segundos para acompanhar o Raspberry Pi
+            setInterval(atualizar, 3000); 
         };
     </script>
 </body>
