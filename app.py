@@ -30,7 +30,6 @@ except Exception as e:
 # 3. Configuração do MQTT
 BROKER = "broker.hivemq.com"
 PORT = 1883
-# Ajustado para ouvir exatamente o que o seu Raspberry Pi envia
 TOPICO = "telemetria/+/dados" 
 
 def on_connect(client, userdata, flags, rc, properties=None):
@@ -48,28 +47,24 @@ def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
         
-        # Garante que o timestamp exista para o ordenamento do gráfico
+        # Garante timestamp para o gráfico
         if 'timestamp' not in payload:
             payload['timestamp'] = datetime.utcnow().isoformat()
         
-        # Salva no Firestore
         if firebase_disponivel:
             db.collection("telemetria").add(payload)
             mensagens_recebidas += 1
-            print(f"📥 Dados salvos do veículo: {payload.get('veiculo_id')}")
-        else:
-            print("⚠️ Erro: Firebase não disponível para salvar.")
+            print(f"📥 Dados salvos: {payload.get('motorista_id', 'Desconhecido')}")
             
     except Exception as e:
         print(f"❌ Erro ao processar mensagem: {e}")
 
-# Cliente MQTT com ID único e robusto
+# Cliente MQTT
 client_id = f'render-backend-{random.randint(1000, 9999)}'
 mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
 mqtt_client.on_connect = on_connect
 mqtt_client.on_message = on_message
 
-# Conexão não-bloqueante
 try:
     mqtt_client.connect(BROKER, PORT, 60)
     mqtt_client.loop_start()
@@ -88,26 +83,33 @@ def status():
         "status": "online",
         "mqtt_conectado": mqtt_conectado,
         "firebase_disponivel": firebase_disponivel,
-        "mensagens_recebidas": mensagens_recebidas,
-        "topico_ouvido": TOPICO
+        "mensagens_recebidas": mensagens_recebidas
     })
 
 @app.route('/api/dados-recentes')
 def dados_recentes():
     try:
         if not firebase_disponivel:
-            return jsonify({"erro": "Firebase não configurado"}), 500
+            return jsonify({"erro": "Firebase indisponível"}), 500
             
-        docs = db.collection("telemetria").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(15).stream()
-        lista = [doc.to_dict() for doc in docs]
+        # OTIMIZAÇÃO: Usando .get() e limitando a 10 para evitar Erro 502/Timeout
+        docs = db.collection("telemetria")\
+                 .order_by("timestamp", direction=firestore.Query.DESCENDING)\
+                 .limit(10)\
+                 .get()
+        
+        lista = []
+        for doc in docs:
+            d = doc.to_dict()
+            # Validação para não enviar dados incompletos ao Dashboard
+            if 'motorista_id' in d and 'classificacao' in d:
+                lista.append(d)
+                
         return jsonify({"total": len(lista), "dados": lista})
     except Exception as e:
+        print(f"❌ Erro na consulta Firestore: {e}")
         return jsonify({"erro": str(e)}), 500
 
-# Mude a forma como o servidor inicia
 if __name__ == "__main__":
-    # Inicia o MQTT em uma thread separada para não bloquear o Flask
-    mqtt_client.loop_start() 
-    
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
