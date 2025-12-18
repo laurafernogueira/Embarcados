@@ -104,6 +104,10 @@ def dados_recentes():
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
 
+# Mude a forma como o servidor inicia
 if __name__ == "__main__":
+    # Inicia o MQTT em uma thread separada para não bloquear o Flask
+    mqtt_client.loop_start() 
+    
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
