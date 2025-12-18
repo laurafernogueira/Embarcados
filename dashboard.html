@@ -2,86 +2,102 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Telemetria em Tempo Real</title>
+    <title>Painel de Gestão de Risco</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; text-align: center; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; max-width: 1000px; margin: auto; }
-        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-        .risk-badge { font-size: 2em; font-weight: bold; padding: 15px; border-radius: 10px; margin: 15px 0; color: white; }
-        .ARRISCADO { background: #e74c3c; }
-        .MODERADO { background: #f39c12; }
-        .SEGURO { background: #2ecc71; }
-        .BUSCANDO { background: #95a5a6; }
-        .stats { display: flex; justify-content: space-around; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
-        .val { display: block; font-size: 1.2em; font-weight: bold; color: #1a73e8; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f9; color: #333; padding: 20px; }
+        .container { max-width: 1100px; margin: auto; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+        .card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        .status-badge { font-size: 2.2em; font-weight: 800; padding: 15px; border-radius: 8px; margin: 15px 0; color: white; display: block; }
+        .SEGURO { background-color: #2ecc71; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
+        .MODERADO { background-color: #f39c12; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
+        .ARRISCADO { background-color: #e74c3c; text-shadow: 1px 1px 2px rgba(0,0,0,0.2); }
+        .OFFLINE { background-color: #95a5a6; }
+
+        .metric-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; }
+        .metric-label { font-size: 0.8em; color: #7f8c8d; text-transform: uppercase; }
+        .metric-value { font-size: 1.3em; font-weight: bold; color: #2c3e50; display: block; }
     </style>
 </head>
 <body>
 
-    <h1>📊 Monitoramento Veicular (IA XGBoost)</h1>
+<div class="container">
+    <div class="header">
+        <h1>🛡️ Sistema de Telemetria com IA</h1>
+        <p>Monitoramento de Risco em Tempo Real - Algoritmo XGBoost</p>
+    </div>
 
     <div class="grid">
-        <div class="card">
-            <h2 id="driver-id">Aguardando...</h2>
-            <div id="status-risco" class="risk-badge BUSCANDO">CONECTANDO...</div>
-            <div class="stats">
-                <div>Velocidade<br><span id="v-vel" class="val">0</span> km/h</div>
-                <div>RPM<br><span id="v-rpm" class="val">0</span></div>
-                <div>Aceleração<br><span id="v-acel" class="val">0</span> m/s²</div>
+        <div class="card" style="text-align: center;">
+            <h3 id="driver-name">Identificando Condutor...</h3>
+            <div id="risk-status" class="status-badge OFFLINE">AGUARDANDO</div>
+            
+            <div class="metric-grid">
+                <div><span class="metric-label">Velocidade</span><span id="txt-vel" class="metric-value">0</span><small>km/h</small></div>
+                <div><span class="metric-label">RPM</span><span id="txt-rpm" class="metric-value">0</span></div>
+                <div><span class="metric-label">Aceleração</span><span id="txt-acel" class="metric-value">0</span><small>m/s²</small></div>
             </div>
         </div>
 
         <div class="card">
             <h3>Histórico de Velocidade</h3>
-            <canvas id="grafico"></canvas>
+            <canvas id="velocityChart" height="200"></canvas>
         </div>
     </div>
+</div>
 
 <script>
-    let meuGrafico;
-    const ctx = document.getElementById('grafico').getContext('2d');
+    let chart;
+    const ctx = document.getElementById('velocityChart').getContext('2d');
 
-    function iniciarGrafico() {
-        meuGrafico = new Chart(ctx, {
+    function initChart() {
+        chart = new Chart(ctx, {
             type: 'line',
-            data: { labels: [], datasets: [{ label: 'km/h', data: [], borderColor: '#1a73e8', tension: 0.4 }] },
-            options: { scales: { y: { beginAtZero: true, max: 180 } } }
+            data: { labels: [], datasets: [{ label: 'Velocidade Real', data: [], borderColor: '#3498db', backgroundColor: 'rgba(52, 152, 219, 0.1)', fill: true, tension: 0.3 }] },
+            options: { responsive: true, scales: { y: { beginAtZero: true, max: 180 } } }
         });
     }
 
-    async function atualizar() {
+    async function updateDashboard() {
         try {
-            const res = await fetch('/api/dados-recentes');
-            const json = await res.json();
+            // Chamada relativa: funciona em qualquer domínio/link
+            const response = await fetch('/api/dados-recentes');
+            const result = await response.json();
             
-            if (json.dados && json.dados.length > 0) {
-                const ultimo = json.dados[0];
+            if (result.dados && result.dados.length > 0) {
+                const latest = result.dados[0];
                 
-                // Atualiza Textos
-                document.getElementById('driver-id').innerText = ultimo.motorista_id;
+                // Atualiza Identidade e Risco
+                document.getElementById('driver-name').innerText = latest.motorista_id || "Motorista Desconhecido";
                 
-                const classe = ultimo.classificacao.classificacao_ml.toUpperCase();
-                const badge = document.getElementById('status-risco');
-                badge.innerText = classe;
-                badge.className = 'risk-badge ' + classe;
+                const mlClass = latest.classificacao.classificacao_ml.toUpperCase();
+                const badge = document.getElementById('risk-status');
+                badge.innerText = mlClass;
+                badge.className = 'status-badge ' + mlClass;
 
-                // Atualiza Números (Acessando a chave 'dados' do seu log)
-                document.getElementById('v-vel').innerText = ultimo.dados.velocidade;
-                document.getElementById('v-rpm').innerText = ultimo.dados.rpm;
-                document.getElementById('v-acel').innerText = ultimo.dados.aceleracao_ms2;
+                // Atualiza Métricas (Dados aninhados da Raspberry)
+                document.getElementById('txt-vel').innerText = latest.dados.velocidade;
+                document.getElementById('txt-rpm').innerText = latest.dados.rpm;
+                document.getElementById('txt-acel').innerText = latest.dados.aceleracao_ms2;
 
-                // Atualiza Gráfico
-                const hist = [...json.dados].reverse();
-                meuGrafico.data.labels = hist.map(d => new Date(d.timestamp).toLocaleTimeString());
-                meuGrafico.data.datasets[0].data = hist.map(d => d.dados.velocidade);
-                meuGrafico.update('none');
+                // Atualiza Gráfico (Invertendo a ordem para o tempo fluir corretamente)
+                const history = [...result.dados].reverse();
+                chart.data.labels = history.map(d => new Date(d.timestamp).toLocaleTimeString());
+                chart.data.datasets[0].data = history.map(d => d.dados.velocidade);
+                chart.update('none');
             }
-        } catch (e) { console.error("Erro na atualização:", e); }
+        } catch (error) {
+            console.error("Erro ao sincronizar dashboard:", error);
+        }
     }
 
-    iniciarGrafico();
-    setInterval(atualizar, 2000); // Sincronizado com os 2s da Raspberry
+    initChart();
+    // Atualização a cada 2 segundos para sincronia perfeita com a Raspberry
+    setInterval(updateDashboard, 2000);
 </script>
+
 </body>
 </html>
