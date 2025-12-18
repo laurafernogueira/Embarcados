@@ -2,84 +2,125 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Monitoramento de Risco - Seguradora</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel de Gestão de Risco - Telemetria</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f9; padding: 20px; color: #333; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; max-width: 1200px; margin: auto; }
-        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); text-align: center; }
-        .risk-badge { font-size: 2em; font-weight: 800; padding: 10px 20px; border-radius: 10px; display: inline-block; margin-top: 10px; }
-        .ARRISCADO { color: #fff; background: #e74c3c; }
-        .MODERADO { color: #fff; background: #f39c12; }
-        .SEGURO { color: #fff; background: #2ecc71; }
-        .driver-info { font-size: 1.5em; color: #1a73e8; margin-bottom: 5px; }
-        .stats-box { display: flex; justify-content: space-around; margin-top: 20px; border-top: 1px solid #eee; padding-top: 20px; }
-        h1 { text-align: center; color: #2c3e50; margin-bottom: 40px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; color: #333; margin: 0; }
+        .container { max-width: 1200px; margin: auto; }
+        h1 { text-align: center; color: #1a73e8; margin-bottom: 30px; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }
+        
+        /* Estilos de Risco */
+        .risk-badge { font-size: 2.2em; font-weight: 800; padding: 15px; border-radius: 10px; display: inline-block; margin: 15px 0; width: 80%; }
+        .ARRISCADO { color: white; background: #e74c3c; box-shadow: 0 4px 10px rgba(231, 76, 60, 0.4); }
+        .MODERADO { color: white; background: #f39c12; box-shadow: 0 4px 10px rgba(243, 156, 18, 0.4); }
+        .SEGURO { color: white; background: #2ecc71; box-shadow: 0 4px 10px rgba(46, 204, 113, 0.4); }
+        .BUSCANDO { color: #7f8c8d; background: #ecf0f1; }
+
+        .driver-name { font-size: 1.4em; color: #2c3e50; font-weight: bold; margin-bottom: 5px; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 25px; border-top: 1px solid #eee; padding-top: 20px; }
+        .stat-item { font-size: 0.9em; color: #666; }
+        .stat-value { display: block; font-size: 1.3em; color: #1a73e8; font-weight: bold; }
+        
+        canvas { max-width: 100%; height: 300px !important; }
     </style>
 </head>
 <body>
-    <h1>🛡️ Painel de Gestão de Risco - Telemetria</h1>
-    
+
+<div class="container">
+    <h1>🛡️ Monitoramento de Risco em Tempo Real</h1>
+
     <div class="grid">
         <div class="card">
-            <h2>👤 Identificação do Condutor</h2>
-            <div id="motorista-id" class="driver-info">Buscando...</div>
-            <div id="status-risco" class="risk-badge">AGUARDANDO</div>
+            <h2>🚨 Status do Condutor</h2>
+            <div id="motorista-nome" class="driver-name">Aguardando Raspberry Pi...</div>
+            <div id="status-risco" class="risk-badge BUSCANDO">CONECTANDO...</div>
             
-            <div class="stats-box">
-                <div><strong>Velocidade</strong><br><span id="val-vel">0</span> km/h</div>
-                <div><strong>RPM</strong><br><span id="val-rpm">0</span></div>
-                <div><strong>Aceleração</strong><br><span id="val-acel">0</span> m/s²</div>
+            <div class="stats-grid">
+                <div class="stat-item">Velocidade<br><span id="val-vel" class="stat-value">0</span> km/h</div>
+                <div class="stat-item">RPM<br><span id="val-rpm" class="stat-value">0</span></div>
+                <div class="stat-item">Aceleração<br><span id="val-acel" class="stat-value">0</span> m/s²</div>
             </div>
         </div>
 
         <div class="card">
-            <h2>📈 Gráfico de Velocidade Real</h2>
+            <h2>📈 Histórico de Velocidade (km/h)</h2>
             <canvas id="graficoVelocidade"></canvas>
         </div>
     </div>
+</div>
 
-    <script>
-        const API_URL = "/api/dados-recentes";
-        let grafico;
+<script>
+    // URL da sua API no Render
+    const API_URL = "/api/dados-recentes";
+    let grafico;
 
-        function inicializarGrafico() {
-            const ctx = document.getElementById('graficoVelocidade').getContext('2d');
-            grafico = new Chart(ctx, {
-                type: 'line',
-                data: { labels: [], datasets: [{ label: 'km/h', data: [], borderColor: '#1a73e8', fill: true, backgroundColor: 'rgba(26,115,232,0.1)', tension: 0.4 }] }
-            });
+    function inicializarGrafico() {
+        const ctx = document.getElementById('graficoVelocidade').getContext('2d');
+        grafico = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Velocidade Instantânea',
+                    data: [],
+                    borderColor: '#1a73e8',
+                    backgroundColor: 'rgba(26, 115, 232, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true, max: 180 } }
+            }
+        });
+    }
+
+    async function atualizar() {
+        try {
+            const response = await fetch(API_URL);
+            const json = await response.json();
+            
+            if (json.dados && json.dados.length > 0) {
+                const ultimo = json.dados[0]; // Pegamos o registro mais recente (Firestore desc)
+                
+                // 1. Atualiza Identificação
+                document.getElementById('motorista-nome').innerText = ultimo.motorista_id || "MOTORISTA DESCONHECIDO";
+
+                // 2. Atualiza Risco e Cores
+                const statusML = ultimo.classificacao.classificacao_ml.toUpperCase();
+                const elRisco = document.getElementById('status-risco');
+                elRisco.innerText = statusML;
+                elRisco.className = `risk-badge ${statusML}`;
+
+                // 3. Atualiza Mini-Stats
+                document.getElementById('val-vel').innerText = ultimo.dados.velocidade;
+                document.getElementById('val-rpm').innerText = ultimo.dados.rpm;
+                document.getElementById('val-acel').innerText = ultimo.dados.aceleracao_ms2;
+
+                // 4. Atualiza Gráfico (Invertemos para mostrar o tempo correndo da esquerda para direita)
+                const historico = [...json.dados].reverse();
+                grafico.data.labels = historico.map(d => new Date(d.timestamp).toLocaleTimeString());
+                grafico.data.datasets[0].data = historico.map(d => d.dados.velocidade);
+                grafico.update('none'); // Update sem animação agressiva para fluidez
+            }
+        } catch (e) {
+            console.error("Erro ao buscar dados da API:", e);
         }
+    }
 
-        async function atualizar() {
-            try {
-                const response = await fetch(API_URL);
-                const json = await response.json();
-                if (json.dados && json.dados.length > 0) {
-                    const ultimo = json.dados[0];
-                    const classificacao = ultimo.classificacao.classificacao_ml.toUpperCase();
-                    
-                    // Atualiza Motorista e Risco
-                    document.getElementById('motorista-id').innerText = `Motorista: ${ultimo.motorista_id}`;
-                    const elRisco = document.getElementById('status-risco');
-                    elRisco.innerText = classificacao;
-                    elRisco.className = `risk-badge ${classificacao}`;
+    window.onload = () => {
+        inicializarGrafico();
+        atualizar();
+        // Atualiza a cada 2 segundos para sincronizar com a Raspberry
+        setInterval(atualizar, 2000); 
+    };
+</script>
 
-                    // Atualiza Dados Secundários
-                    document.getElementById('val-vel').innerText = ultimo.dados.velocidade;
-                    document.getElementById('val-rpm').innerText = ultimo.dados.rpm;
-                    document.getElementById('val-acel').innerText = ultimo.dados.aceleracao_ms2;
-
-                    // Atualiza Gráfico
-                    const historico = [...json.dados].reverse();
-                    grafico.data.labels = historico.map(d => new Date(d.timestamp).toLocaleTimeString());
-                    grafico.data.datasets[0].data = historico.map(d => d.dados.velocidade);
-                    grafico.update();
-                }
-            } catch (e) { console.error("Falha ao buscar dados", e); }
-        }
-
-        window.onload = () => { inicializarGrafico(); atualizar(); setInterval(atualizar, 3000); };
-    </script>
 </body>
 </html>
